@@ -2,4 +2,9 @@
   "login": "your_username",
   "password": "your_password",
   "url_login": "https://www.micodus.net/login2.aspx?v=2",
+  "url_api": "https://www.micodus.net/Ajax/DevicesAjax.asmx",
+  "api_route": "/GetDevicesByUserID",
+  "max_scrape_attempts": 5,
+  "max_login_attempts": 5,
+  "retry_after_hours": 6
 }
