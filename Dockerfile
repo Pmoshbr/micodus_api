@@ -1,5 +1,5 @@
-# Base image
-FROM python:3.9-slim
+# Use Debian Buster for better compatibility with Chrome dependencies
+FROM debian:buster-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -9,7 +9,6 @@ RUN apt-get update && apt-get install -y \
     xvfb \
     libxi6 \
     libgconf-2-4 \
-    default-jdk \
     libnss3 \
     libx11-xcb1 \
     libxcomposite1 \
@@ -22,9 +21,13 @@ RUN apt-get update && apt-get install -y \
     libatk-bridge2.0-0 \
     libxss1 \
     libgtk-3-0 \
+    fonts-liberation \
+    libgbm1 \
+    libvulkan1 \
+    xdg-utils \
     --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
-# Download Chrome
+# Download and install Chrome
 RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
     apt-get install -y ./google-chrome-stable_current_amd64.deb && \
     rm google-chrome-stable_current_amd64.deb
