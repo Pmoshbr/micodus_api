@@ -54,9 +54,7 @@ def perform_login():
             driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=chrome_options)
 
         driver.get(config["url_login"])
-        WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.ID, "changBar0"))
-        ).click()
+        WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.ID, "changBar0"))).click()
 
         # Fill login fields and submit
         username = driver.find_element(By.ID, "txtUserName")
@@ -66,9 +64,12 @@ def perform_login():
         driver.find_element(By.ID, "btnLogin").click()
 
         # Wait until the page loads
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.ID, "pageShowCanvas_Map"))
-        )
+        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "pageShowCanvas_Map")))
+        
+        iframe_url = "https://www.micodus.net/" + iframe_element.get_attribute("src")
+        driver.get(iframe_url)
+
+        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "divDevicesList")))
 
         status["logged_in"] = True
         status["online"] = True
