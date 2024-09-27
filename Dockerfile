@@ -25,12 +25,13 @@ RUN apt-get update && apt-get install -y \
     libgbm1 \
     libvulkan1 \
     xdg-utils \
-    apt-utils \
     python3 \
     python3-pip \
     build-essential \
     libssl-dev \
     libffi-dev \
+    python3-setuptools \
+    python3-wheel \
     --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
 # Download and install Google Chrome
@@ -50,7 +51,7 @@ ENV DISPLAY=:99
 # Create working directory
 WORKDIR /usr/src/app
 
-# Install cryptography directly from a wheel to avoid building from source
+# Install the latest binary version of cryptography directly to avoid building from source
 RUN pip3 install --no-cache-dir cryptography --only-binary cryptography
 
 # Copy requirements.txt and install Python dependencies
