@@ -63,10 +63,12 @@ def perform_login():
         login_button = driver.find_element(By.ID, "btnLogin")
         login_button.click()
 
-        # Wait for successful login or error
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "divDevicesListInfo"))  # This should appear only after login
+        # Wait for the presence of a user-specific element to confirm login
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.ID, "pageShowCanvas_Map"))
         )
+
+        # If login is successful, set the status
         status["logged_in"] = True
         status["online"] = True
         status["last_action"] = "Logged in successfully"
