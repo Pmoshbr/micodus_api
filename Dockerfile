@@ -1,11 +1,10 @@
 # Use Python 3.10-slim as the base image
 FROM python:3.10-slim
 
-# Install system dependencies, wget, gnupg, and other required libraries
+# Install system dependencies and Chrome dependencies
 RUN apt-get update && apt-get install -y \
-    curl \
     wget \
-    gnupg \
+    curl \
     unzip \
     fonts-liberation \
     libnss3 \
@@ -16,14 +15,18 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 \
     libasound2 \
     xdg-utils \
+    libdrm2 \
+    libgbm1 \
+    libu2f-udev \
+    libvulkan1 \
     --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
-# Download and install Google Chrome version 114.0.5735.90-1 from the mirror
+# Download and install Google Chrome version 114 from the mirror
 RUN wget -q https://mirror.cs.uchicago.edu/google-chrome/pool/main/g/google-chrome-stable/google-chrome-stable_114.0.5735.90-1_amd64.deb && \
     apt-get install -y ./google-chrome-stable_114.0.5735.90-1_amd64.deb && \
     rm google-chrome-stable_114.0.5735.90-1_amd64.deb
 
-# Install ChromeDriver version 114 to match the installed Chrome version
+# Install ChromeDriver version 114
 RUN wget -q https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip && \
     unzip chromedriver_linux64.zip -d /usr/local/bin/ && \
     rm chromedriver_linux64.zip
