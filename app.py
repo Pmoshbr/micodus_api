@@ -68,8 +68,8 @@ def perform_login():
         login_button.click()
 
         # Wait for the presence of a logged-in-specific element to confirm login
-        WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.ID, "divDevicesListInfo"))
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.ID, "pageShowCanvas_Map"))
         )
 
         # If login is successful, set the status
