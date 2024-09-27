@@ -92,6 +92,7 @@ def scrape_gps_data(driver):
         )
         rows = gps_table.find_elements(By.TAG_NAME, "tr")
         gps_data_list = []
+        print(rows);
         for row in rows[1:]:
             cols = row.find_elements(By.TAG_NAME, "td")
             if len(cols) == 11:
@@ -129,6 +130,7 @@ def scrape_alarm_data(driver):
         )
         rows = alarm_table.find_elements(By.TAG_NAME, "tr")
         alarm_data_list = []
+        print(rows)
         for row in rows[1:]:
             cols = row.find_elements(By.TAG_NAME, "td")
             if len(cols) == 7:
