@@ -25,13 +25,16 @@ RUN apt-get update && apt-get install -y \
     libgbm1 \
     libvulkan1 \
     xdg-utils \
+    apt-utils \
     python3 \
     python3-pip \
-    apt-utils \
     build-essential \
     libssl-dev \
     libffi-dev \
     --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
+# Set environment variable to prevent pip from building from source
+ENV PIP_NO_BINARY=cryptography
 
 # Download and install Google Chrome
 RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
