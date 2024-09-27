@@ -9,6 +9,11 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+import threading
+
+# Load config.json for credentials and settings
+with open("config.json") as f:
+    config = json.load(f)
 
 # Initialize FastAPI
 app = FastAPI()
@@ -17,6 +22,8 @@ app = FastAPI()
 gps_data = None
 alarm_data = None
 driver = None
+scrape_attempts = 0
+login_attempts = 0
 status = {
     "logged_in": False,
     "online": False,
@@ -35,11 +42,18 @@ chrome_options.add_argument("--disable-dev-shm-usage")
 
 # Function to perform login
 def perform_login():
-    global status, driver
+    global status, driver, login_attempts
+
     try:
+        if login_attempts >= config["max_login_attempts"]:
+            status["errors"] = "Max login attempts reached"
+            return None
+
+        # Setup WebDriver if it's not already initialized
         if driver is None:
             driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=chrome_options)
-        driver.get("https://example.com/login")  # Replace with the actual URL
+
+        driver.get(config["url_login"])
         WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.ID, "changBar0"))
         ).click()
@@ -47,29 +61,31 @@ def perform_login():
         # Fill login fields and submit
         username = driver.find_element(By.ID, "txtUserName")
         password = driver.find_element(By.ID, "txtAccountPassword")
-        username.send_keys("your_username")  # Replace with actual username
-        password.send_keys("your_password")  # Replace with actual password
+        username.send_keys(config["login"])  # Use username from config.json
+        password.send_keys(config["password"])  # Use password from config.json
         driver.find_element(By.ID, "btnLogin").click()
 
+        # Wait until the page loads
         WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.ID, "pageShowCanvas_Map"))  # Adjust to a specific element post-login
+            EC.presence_of_element_located((By.ID, "pageShowCanvas_Map"))
         )
 
         status["logged_in"] = True
         status["online"] = True
         status["last_action"] = "Logged in successfully"
+        status["login_attempts"] = login_attempts
         return driver
     except Exception as e:
+        login_attempts += 1
         status["logged_in"] = False
         status["errors"] = f"Login failed: {str(e)}"
         status["last_failure_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         status["last_action"] = "Login attempt failed"
-        status["login_attempts"] += 1
         return None
 
 # Function to scrape GPS data
 def scrape_gps_data(driver):
-    global gps_data, status
+    global gps_data, status, scrape_attempts
     try:
         gps_table = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "divDevicesListInfo"))
@@ -95,7 +111,8 @@ def scrape_gps_data(driver):
                 gps_data_list.append(gps_data_entry)
 
         gps_data = json.dumps(gps_data_list, indent=4)
-        status["scraping_attempts"] += 1
+        scrape_attempts += 1
+        status["scraping_attempts"] = scrape_attempts
         status["last_action"] = "GPS data scraped successfully"
         status["errors"] = None
     except Exception as e:
@@ -105,7 +122,7 @@ def scrape_gps_data(driver):
 
 # Function to scrape Alarm data
 def scrape_alarm_data(driver):
-    global alarm_data, status
+    global alarm_data, status, scrape_attempts
     try:
         alarm_table = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "divExceptionMessageDivInfo"))
@@ -127,7 +144,8 @@ def scrape_alarm_data(driver):
                 alarm_data_list.append(alarm_data_entry)
 
         alarm_data = json.dumps(alarm_data_list, indent=4)
-        status["scraping_attempts"] += 1
+        scrape_attempts += 1
+        status["scraping_attempts"] = scrape_attempts
         status["last_action"] = "Alarm data scraped successfully"
         status["errors"] = None
     except Exception as e:
@@ -137,12 +155,16 @@ def scrape_alarm_data(driver):
 
 # Function to continuously scrape GPS and Alarm data
 def continuous_scrape():
+    global scrape_attempts
     while True:
         if not status["logged_in"]:
             driver = perform_login()
         if status["logged_in"]:
             scrape_gps_data(driver)
             scrape_alarm_data(driver)
+            if scrape_attempts >= config["max_scrape_attempts"]:
+                status["errors"] = "Max scraping attempts reached"
+                break
         time.sleep(10)  # Scrape every 10 seconds
 
 # FastAPI route to get GPS data
@@ -174,7 +196,6 @@ def take_screenshot():
     return {"error": "Driver not initialized"}
 
 # Start the continuous scraping in a separate thread
-import threading
 scraping_thread = threading.Thread(target=continuous_scrape)
 scraping_thread.daemon = True
 scraping_thread.start()
