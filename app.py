@@ -16,6 +16,7 @@ app = FastAPI()
 # Global variables for storing scraped data and status
 gps_data = None
 alarm_data = None
+driver = None
 status = {
     "logged_in": False,
     "online": False,
@@ -34,9 +35,10 @@ chrome_options.add_argument("--disable-dev-shm-usage")
 
 # Function to perform login
 def perform_login():
-    global status
+    global status, driver
     try:
-        driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=chrome_options)
+        if driver is None:
+            driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=chrome_options)
         driver.get("https://example.com/login")  # Replace with the actual URL
         WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.ID, "changBar0"))
@@ -165,8 +167,11 @@ def get_status():
 # FastAPI route to take a screenshot
 @app.get("/screenshot")
 def take_screenshot():
-    driver.save_screenshot("screenshot.png")
-    return {"message": "Screenshot taken"}
+    global driver
+    if driver:
+        driver.save_screenshot("screenshot.png")
+        return {"message": "Screenshot taken"}
+    return {"error": "Driver not initialized"}
 
 # Start the continuous scraping in a separate thread
 import threading
