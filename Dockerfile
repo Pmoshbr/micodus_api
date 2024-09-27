@@ -1,7 +1,7 @@
 # Use Debian Buster for better compatibility with Chrome dependencies
 FROM debian:buster-slim
 
-# Install system dependencies, Python 3, and pip
+# Install system dependencies, Python 3, pip, and build tools for cryptography
 RUN apt-get update && apt-get install -y \
     curl \
     wget \
@@ -27,6 +27,10 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     python3 \
     python3-pip \
+    apt-utils \
+    build-essential \
+    libssl-dev \
+    libffi-dev \
     --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
 # Download and install Google Chrome
