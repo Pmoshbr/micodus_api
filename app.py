@@ -165,10 +165,8 @@ def get_status():
 # FastAPI route to take a screenshot
 @app.get("/screenshot")
 def take_screenshot():
-    if status["logged_in"]:
-        driver.save_screenshot("screenshot.png")
-        return {"message": "Screenshot taken"}
-    return {"error": "Not logged in"}
+    driver.save_screenshot("screenshot.png")
+    return {"message": "Screenshot taken"}
 
 # Start the continuous scraping in a separate thread
 import threading
