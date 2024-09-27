@@ -33,9 +33,6 @@ RUN apt-get update && apt-get install -y \
     libffi-dev \
     --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
-# Set environment variable to prevent pip from building from source
-ENV PIP_NO_BINARY=cryptography
-
 # Download and install Google Chrome
 RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
     apt-get install -y ./google-chrome-stable_current_amd64.deb && \
@@ -52,6 +49,9 @@ ENV DISPLAY=:99
 
 # Create working directory
 WORKDIR /usr/src/app
+
+# Install cryptography directly from a wheel to avoid building from source
+RUN pip3 install --no-cache-dir cryptography==43.0.1 --only-binary cryptography
 
 # Copy requirements.txt and install Python dependencies
 COPY requirements.txt .
