@@ -1,21 +1,21 @@
 import time
+import json
 from datetime import datetime
-from threading import Thread
+from fastapi import FastAPI
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from fastapi import FastAPI
-import json
-import os
+from webdriver_manager.chrome import ChromeDriverManager
 
+# Initialize FastAPI
 app = FastAPI()
 
-# Load configuration from config.json
-with open("config.json") as config_file:
-    config = json.load(config_file)
-
+# Global variables for storing scraped data and status
+gps_data = None
+alarm_data = None
 status = {
     "logged_in": False,
     "online": False,
@@ -23,87 +23,47 @@ status = {
     "scraping_attempts": 0,
     "login_attempts": 0,
     "last_action": "",
-    "last_failure_time": None
+    "last_failure_time": None,
 }
 
-gps_data = None
-alarm_data = None
+# Chrome WebDriver options for headless execution
+chrome_options = Options()
+chrome_options.add_argument("--headless")
+chrome_options.add_argument("--no-sandbox")
+chrome_options.add_argument("--disable-dev-shm-usage")
 
-# Helper function to capture a screenshot during the login process
-def capture_screenshot(driver, name="screenshot"):
-    screenshot_path = os.path.join(os.getcwd(), f"{name}.png")
-    driver.save_screenshot(screenshot_path)
-    print(f"Screenshot saved to {screenshot_path}")
-
-# Function to perform login and return a WebDriver instance
+# Function to perform login
 def perform_login():
     global status
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-
-    driver = webdriver.Chrome(options=chrome_options)
-    driver.get(config["url_login"])
-
     try:
-        # Switch login type
-        status["last_action"] = "Login type switched"
-        switch_login_type = WebDriverWait(driver, 10).until(
+        driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=chrome_options)
+        driver.get("https://example.com/login")  # Replace with the actual URL
+        WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.ID, "changBar0"))
-        )
-        switch_login_type.click()
+        ).click()
 
-        # Enter credentials
-        username_input = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "txtUserName"))
-        )
-        password_input = driver.find_element(By.ID, "txtAccountPassword")
+        # Fill login fields and submit
+        username = driver.find_element(By.ID, "txtUserName")
+        password = driver.find_element(By.ID, "txtAccountPassword")
+        username.send_keys("your_username")  # Replace with actual username
+        password.send_keys("your_password")  # Replace with actual password
+        driver.find_element(By.ID, "btnLogin").click()
 
-        username_input.send_keys(config["login"])
-        password_input.send_keys(config["password"])
-
-        # Click login button
-        login_button = driver.find_element(By.ID, "btnLogin")
-        login_button.click()
-
-        # Wait for the presence of a logged-in-specific element to confirm login
         WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.ID, "pageShowCanvas_Map"))
+            EC.presence_of_element_located((By.ID, "pageShowCanvas_Map"))  # Adjust to a specific element post-login
         )
 
-        # If login is successful, set the status
         status["logged_in"] = True
         status["online"] = True
         status["last_action"] = "Logged in successfully"
-        status["errors"] = None
-
+        return driver
     except Exception as e:
-        # Capture a screenshot if login fails
-        capture_screenshot(driver, name="login_failure")
         status["logged_in"] = False
-        status["online"] = False
         status["errors"] = f"Login failed: {str(e)}"
         status["last_failure_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         status["last_action"] = "Login attempt failed"
-        print(f"Login failed: {str(e)}")
-
-        driver.quit()
+        status["login_attempts"] += 1
         return None
-
-    return driver
-
-# Ensure the session is still valid, if not, re-login
-def ensure_logged_in(driver):
-    global status
-    try:
-        driver.find_element(By.ID, "divDevicesListInfo")  # Check if session is still valid
-    except Exception:
-        # Session expired, try to re-login
-        print("Session expired, trying to re-login.")
-        status["logged_in"] = False
-        driver = perform_login()
-    return driver
 
 # Function to scrape GPS data
 def scrape_gps_data(driver):
@@ -112,15 +72,12 @@ def scrape_gps_data(driver):
         gps_table = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "divDevicesListInfo"))
         )
-
-        # Get all rows in the table
         rows = gps_table.find_elements(By.TAG_NAME, "tr")
-
         gps_data_list = []
-        for row in rows[1:]:  # Skipping the header row
+        for row in rows[1:]:
             cols = row.find_elements(By.TAG_NAME, "td")
-            if len(cols) == 11:  # Ensure the correct number of columns
-                device_data = {
+            if len(cols) == 11:
+                gps_data_entry = {
                     "Target Name": cols[0].text.strip(),
                     "Type": cols[1].text.strip(),
                     "License Plate No.": cols[2].text.strip(),
@@ -131,13 +88,11 @@ def scrape_gps_data(driver):
                     "Direction": cols[7].text.strip(),
                     "Total mileage": cols[8].text.strip(),
                     "Status": cols[9].text.strip(),
-                    "Position time": cols[10].text.strip(),
+                    "Position time": cols[10].text.strip()
                 }
-                gps_data_list.append(device_data)
+                gps_data_list.append(gps_data_entry)
 
-        # Convert the list to JSON format
         gps_data = json.dumps(gps_data_list, indent=4)
-
         status["scraping_attempts"] += 1
         status["last_action"] = "GPS data scraped successfully"
         status["errors"] = None
@@ -150,10 +105,26 @@ def scrape_gps_data(driver):
 def scrape_alarm_data(driver):
     global alarm_data, status
     try:
-        alarm_element = WebDriverWait(driver, 10).until(
+        alarm_table = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "divExceptionMessageDivInfo"))
         )
-        alarm_data = alarm_element.text  # Modify this to extract structured data if needed
+        rows = alarm_table.find_elements(By.TAG_NAME, "tr")
+        alarm_data_list = []
+        for row in rows[1:]:
+            cols = row.find_elements(By.TAG_NAME, "td")
+            if len(cols) == 7:
+                alarm_data_entry = {
+                    "Target Name": cols[0].text.strip(),
+                    "ID No.": cols[1].text.strip(),
+                    "Alarm Type": cols[2].text.strip(),
+                    "Alarm Time": cols[3].text.strip(),
+                    "Position Time": cols[4].text.strip(),
+                    "Type": cols[5].text.strip(),
+                    "Operate": "Clear"
+                }
+                alarm_data_list.append(alarm_data_entry)
+
+        alarm_data = json.dumps(alarm_data_list, indent=4)
         status["scraping_attempts"] += 1
         status["last_action"] = "Alarm data scraped successfully"
         status["errors"] = None
@@ -162,51 +133,45 @@ def scrape_alarm_data(driver):
         status["last_failure_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         status["last_action"] = "Scraping Alarm data failed"
 
-# Periodic task to update GPS and Alarm data every 10 seconds
-def periodic_scraping():
-    global status
-    driver = perform_login()
+# Function to continuously scrape GPS and Alarm data
+def continuous_scrape():
     while True:
-        if driver:
-            # Ensure session is active, re-login if needed
-            driver = ensure_logged_in(driver)
+        if not status["logged_in"]:
+            driver = perform_login()
+        if status["logged_in"]:
+            scrape_gps_data(driver)
+            scrape_alarm_data(driver)
+        time.sleep(10)  # Scrape every 10 seconds
 
-            if driver and status["logged_in"]:
-                scrape_gps_data(driver)
-                scrape_alarm_data(driver)
+# FastAPI route to get GPS data
+@app.get("/gps")
+def get_gps_data():
+    if gps_data:
+        return json.loads(gps_data)
+    return {"error": "No GPS data available"}
 
-        # Wait for 10 seconds before the next scrape
-        time.sleep(10)
+# FastAPI route to get Alarm data
+@app.get("/alarms")
+def get_alarm_data():
+    if alarm_data:
+        return json.loads(alarm_data)
+    return {"error": "No alarm data available"}
 
-# Start the periodic scraping in a separate thread
-scraping_thread = Thread(target=periodic_scraping)
-scraping_thread.start()
-
-# Route to check the status
+# FastAPI route to get the status
 @app.get("/status")
 def get_status():
     return status
 
-# Route to get the last GPS data
-@app.get("/gps")
-def get_gps_data():
-    if gps_data:
-        return {"gps_data": gps_data}
-    return {"error": "No GPS data available"}
-
-# Route to get the last Alarm data
-@app.get("/alarms")
-def get_alarm_data():
-    if alarm_data:
-        return {"alarm_data": alarm_data}
-    return {"error": "No Alarm data available"}
-
-# Route to capture a screenshot
+# FastAPI route to take a screenshot
 @app.get("/screenshot")
-def get_screenshot():
-    driver = perform_login()
-    if driver:
-        screenshot_path = capture_screenshot(driver, name="manual_screenshot")
-        driver.quit()
-        return FileResponse(screenshot_path)
-    return {"error": "Failed to capture screenshot"}
+def take_screenshot():
+    if status["logged_in"]:
+        driver.save_screenshot("screenshot.png")
+        return {"message": "Screenshot taken"}
+    return {"error": "Not logged in"}
+
+# Start the continuous scraping in a separate thread
+import threading
+scraping_thread = threading.Thread(target=continuous_scrape)
+scraping_thread.daemon = True
+scraping_thread.start()
