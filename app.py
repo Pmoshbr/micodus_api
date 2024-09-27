@@ -87,7 +87,7 @@ def perform_login():
 def scrape_gps_data(driver):
     global gps_data, status, scrape_attempts
     try:
-        gps_table = WebDriverWait(driver, 10).until(
+        gps_table = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.ID, "divDevicesListInfo"))
         )
         rows = gps_table.find_elements(By.TAG_NAME, "tr")
@@ -124,7 +124,7 @@ def scrape_gps_data(driver):
 def scrape_alarm_data(driver):
     global alarm_data, status, scrape_attempts
     try:
-        alarm_table = WebDriverWait(driver, 10).until(
+        alarm_table = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.ID, "divExceptionMessageDivInfo"))
         )
         rows = alarm_table.find_elements(By.TAG_NAME, "tr")
