@@ -2,9 +2,9 @@ from fastapi import FastAPI
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.keys import Keys
 import time
 from datetime import datetime, timedelta
+import json
 
 # Load configuration from config.json
 with open("config.json", "r") as config_file:
@@ -81,18 +81,23 @@ def perform_login():
         # Open the login page
         driver.get(url_login)
 
-        # Find and fill the login form
-        username_field = driver.find_element(By.NAME, "txtName")
-        password_field = driver.find_element(By.NAME, "txtPwd")
+        # Step 1: Find and click the div to switch to 'B' login type
+        driver.find_element(By.ID, "changBar0").click()
+        time.sleep(1)  # Wait for the switch to complete
+
+        # Step 2: Find and fill the login form
+        username_field = driver.find_element(By.NAME, "txtUserName")
+        password_field = driver.find_element(By.NAME, "txtAccountPassword")
 
         # Enter login credentials
         username_field.send_keys(login)
         password_field.send_keys(password)
         
-        # Submit the login form
-        password_field.send_keys(Keys.RETURN)
-        
-        # Wait for the page to load
+        # Step 3: Click the login button
+        login_button = driver.find_element(By.ID, "btnLogin")
+        login_button.click()
+
+        # Wait for the page to load after clicking the login button
         time.sleep(5)
 
         # Check if the login was successful
