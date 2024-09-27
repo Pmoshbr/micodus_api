@@ -109,10 +109,35 @@ def ensure_logged_in(driver):
 def scrape_gps_data(driver):
     global gps_data, status
     try:
-        gps_element = WebDriverWait(driver, 10).until(
+        gps_table = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "divDevicesListInfo"))
         )
-        gps_data = gps_element.text  # Modify this to extract structured data if needed
+
+        # Get all rows in the table
+        rows = gps_table.find_elements(By.TAG_NAME, "tr")
+
+        gps_data_list = []
+        for row in rows[1:]:  # Skipping the header row
+            cols = row.find_elements(By.TAG_NAME, "td")
+            if len(cols) == 11:  # Ensure the correct number of columns
+                device_data = {
+                    "Target Name": cols[0].text.strip(),
+                    "Type": cols[1].text.strip(),
+                    "License Plate No.": cols[2].text.strip(),
+                    "Speed Limit": cols[3].text.strip(),
+                    "Latitude": cols[4].text.strip(),
+                    "Longitude": cols[5].text.strip(),
+                    "Speed": cols[6].text.strip(),
+                    "Direction": cols[7].text.strip(),
+                    "Total mileage": cols[8].text.strip(),
+                    "Status": cols[9].text.strip(),
+                    "Position time": cols[10].text.strip(),
+                }
+                gps_data_list.append(device_data)
+
+        # Convert the list to JSON format
+        gps_data = json.dumps(gps_data_list, indent=4)
+
         status["scraping_attempts"] += 1
         status["last_action"] = "GPS data scraped successfully"
         status["errors"] = None
@@ -175,3 +200,13 @@ def get_alarm_data():
     if alarm_data:
         return {"alarm_data": alarm_data}
     return {"error": "No Alarm data available"}
+
+# Route to capture a screenshot
+@app.get("/screenshot")
+def get_screenshot():
+    driver = perform_login()
+    if driver:
+        screenshot_path = capture_screenshot(driver, name="manual_screenshot")
+        driver.quit()
+        return FileResponse(screenshot_path)
+    return {"error": "Failed to capture screenshot"}
