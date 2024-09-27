@@ -55,18 +55,24 @@ def perform_login():
 
         driver.get(config["url_login"])
         WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.ID, "changBar0"))).click()
+        status["online"] = True
+        status["last_action"] = "Change login type"
 
         # Fill login fields and submit
         username = driver.find_element(By.ID, "txtUserName")
         password = driver.find_element(By.ID, "txtAccountPassword")
         username.send_keys(config["login"])  # Use username from config.json
         password.send_keys(config["password"])  # Use password from config.json
+        status["last_action"] = "Click to Login Button"
         driver.find_element(By.ID, "btnLogin").click()
 
         # Wait until the page loads
-        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "pageShowCanvas_Map")))
-        
-        iframe_url = "https://www.micodus.net/" + iframe_element.get_attribute("src")
+        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "form1")))
+        status["last_action"] = "Login Successul"
+
+        iframe_element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, "//div[@id='pageShowCanvas_Map']//iframe")))
+        iframe_url = iframe_element.get_attribute("src")
+        status["last_action"] = "URL Redirect: " + iframe_url
         driver.get(iframe_url)
 
         WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "divDevicesList")))
