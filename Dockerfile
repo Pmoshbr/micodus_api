@@ -1,11 +1,13 @@
-# Use Python 3.10-slim as the base image
-FROM python:3.10-slim
+# Use Debian Buster slim as the base image for better compatibility with Chrome dependencies
+FROM debian:buster-slim
 
-# Install system dependencies and Chrome dependencies
+# Install system dependencies, Python 3, and pip
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
     unzip \
+    gnupg2 \
+    ca-certificates \
     fonts-liberation \
     libnss3 \
     libatk-bridge2.0-0 \
@@ -19,30 +21,34 @@ RUN apt-get update && apt-get install -y \
     libgbm1 \
     libu2f-udev \
     libvulkan1 \
+    python3 \
+    python3-pip \
     --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
-# Download and install Google Chrome version 114 from the mirror
-RUN wget -q https://mirror.cs.uchicago.edu/google-chrome/pool/main/g/google-chrome-stable/google-chrome-stable_114.0.5735.90-1_amd64.deb && \
-    apt-get install -y ./google-chrome-stable_114.0.5735.90-1_amd64.deb && \
-    rm google-chrome-stable_114.0.5735.90-1_amd64.deb
+# Add Google's public key and set up Chrome repository
+RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+    sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
 
-# Install ChromeDriver version 114
+# Install Google Chrome version 114
+RUN apt-get update && apt-get install -y google-chrome-stable=114.0.5735.90-1 --allow-downgrades
+
+# Install ChromeDriver version 114 to match Chrome
 RUN wget -q https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip && \
     unzip chromedriver_linux64.zip -d /usr/local/bin/ && \
     rm chromedriver_linux64.zip
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Set display port for headless Chrome
+ENV DISPLAY=:99
 
-# Set the working directory
+# Create working directory
 WORKDIR /usr/src/app
+
+# Copy requirements.txt and install dependencies
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code
 COPY . .
-
-# Set display port for headless Chrome
-ENV DISPLAY=:99
 
 # Expose the FastAPI default port
 EXPOSE 8000
