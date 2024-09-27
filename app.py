@@ -1,29 +1,22 @@
+import json
+import time
 from fastapi import FastAPI
 from selenium import webdriver
-from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-import time
-from datetime import datetime, timedelta
-import json
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
+from pydantic import BaseModel
 
-# Load configuration from config.json
-with open("config.json", "r") as config_file:
-    config = json.load(config_file)
-
-# Extract variables from the config
-login = config.get("login")
-password = config.get("password")
-url_login = config.get("url_login")
-max_scrape_attempts = config.get("max_scrape_attempts", 3)
-max_login_attempts = config.get("max_login_attempts", 3)
-retry_after_hours = config.get("retry_after_hours", 6)
-
-# Initialize FastAPI app
 app = FastAPI()
 
-# Global variables to store session info and status
-session_cookies = None
-api_status = {
+# Load the configuration file
+with open('config.json', 'r') as f:
+    config = json.load(f)
+
+# Global status dictionary for the /status route
+status = {
     "logged_in": False,
     "online": False,
     "errors": None,
@@ -33,242 +26,132 @@ api_status = {
     "last_failure_time": None
 }
 
-# Root endpoint to check if the API is running
-@app.get("/")
-def read_root():
-    return {"message": "API is running!"}
+# Helper function to update status and print logs
+def update_status(key, value, action_desc=None):
+    status[key] = value
+    if action_desc:
+        print(f"[DEBUG] {action_desc}: {value}")
 
-# Function to update API status
-def update_status(key, value):
-    global api_status
-    api_status[key] = value
-
-# Function to reset failure counters after a given time
-def reset_failure_counters():
-    global api_status
-    if api_status["last_failure_time"]:
-        failure_time = api_status["last_failure_time"]
-        if datetime.now() > failure_time + timedelta(hours=retry_after_hours):
-            update_status("scraping_attempts", 0)
-            update_status("login_attempts", 0)
-            update_status("last_failure_time", None)
-            print("Failure counters reset after timeout.")
-
-# Function to perform login using Selenium and retrieve cookies
-def perform_login():
-    global session_cookies, api_status
-    
-    # Reset failure counters if enough time has passed
-    reset_failure_counters()
-    
-    # Limit login attempts
-    if api_status["login_attempts"] >= max_login_attempts:
-        update_status("errors", "Max login attempts reached")
-        update_status("last_action", "Login failed")
-        print("Max login attempts reached. Login halted.")
-        return None
-    
-    # Configure headless mode for Selenium
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
-
-    # Initialize Selenium WebDriver
-    driver = webdriver.Chrome(options=chrome_options)
-    
+# Function to perform login
+def login(driver):
     try:
-        # Open the login page
-        driver.get(url_login)
+        # Attempt to switch login type
+        print("[DEBUG] Attempting to switch login type")
+        login_type_element = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.ID, "changBar0"))
+        )
+        login_type_element.click()
+        update_status("last_action", "Login type switched")
 
-        # Step 1: Find and click the div to switch to 'B' login type
-        driver.find_element(By.ID, "changBar0").click()
-        time.sleep(1)  # Wait for the switch to complete
+        # Fill in login form
+        print("[DEBUG] Filling in login credentials")
+        driver.find_element(By.ID, "txtUserName").send_keys(config['login'])
+        driver.find_element(By.ID, "txtAccountPassword").send_keys(config['password'])
 
-        # Step 2: Find and fill the login form
-        username_field = driver.find_element(By.NAME, "txtUserName")
-        password_field = driver.find_element(By.NAME, "txtAccountPassword")
-
-        # Enter login credentials
-        username_field.send_keys(login)
-        password_field.send_keys(password)
-        
-        # Step 3: Click the login button
-        login_button = driver.find_element(By.ID, "btnLogin")
+        # Click login button
+        print("[DEBUG] Clicking login button")
+        login_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.ID, "btnLogin"))
+        )
         login_button.click()
 
-        # Wait for the page to load after clicking the login button
-        time.sleep(5)
-
-        # Check if the login was successful
+        # Check if login was successful
+        time.sleep(5)  # Allow time for login
         if "dashboard" in driver.current_url:
-            session_cookies = driver.get_cookies()
-            update_status("logged_in", True)
-            update_status("online", True)
-            update_status("errors", None)
-            update_status("login_attempts", 0)  # Reset login attempts on success
-            update_status("last_action", "Login successful")
-            print("Login successful! Cookies saved.")
+            update_status("logged_in", True, "Successfully logged in")
+            print("[DEBUG] Login successful")
         else:
-            update_status("logged_in", False)
-            update_status("errors", "Login failed!")
-            update_status("login_attempts", api_status["login_attempts"] + 1)
-            print(f"Login failed! Attempts: {api_status['login_attempts']}")
-            session_cookies = None
-            if api_status["login_attempts"] >= max_login_attempts:
-                update_status("last_failure_time", datetime.now())
-    
+            raise Exception("Login failed: Incorrect credentials or unexpected login flow")
+
+    except TimeoutException as e:
+        update_status("errors", f"Timeout while attempting to login: {str(e)}")
+        update_status("last_failure_time", time.strftime("%Y-%m-%d %H:%M:%S"))
+        raise Exception(f"Timeout during login process: {str(e)}")
+
     except Exception as e:
-        update_status("online", False)
-        update_status("errors", str(e))
-        update_status("login_attempts", api_status["login_attempts"] + 1)
-        update_status("last_action", "Login error")
-        print(f"Error during login: {str(e)}")
-        session_cookies = None
-        if api_status["login_attempts"] >= max_login_attempts:
-            update_status("last_failure_time", datetime.now())
+        update_status("errors", f"Login error: {str(e)}")
+        update_status("last_failure_time", time.strftime("%Y-%m-%d %H:%M:%S"))
+        print(f"[ERROR] {str(e)}")
+        raise e
 
-    return driver
-
-# Function to check if cookies are still valid
-def cookies_valid(driver):
-    if not session_cookies:
-        return False
-    return True
-
-# Function to ensure the login is valid before scraping
-def ensure_logged_in():
-    driver = None
-    # Perform login if not logged in or if session cookies are invalid
-    if not api_status["logged_in"] or not cookies_valid(driver):
-        driver = perform_login()
-    return driver
-
-# Function to extract GPS data from the table in div 'divDevicesListInfo'
-def extract_gps_data(driver):
+# Function to scrape data from the page
+def scrape_data(driver):
     try:
-        # Locate the table inside the div with id 'divDevicesListInfo'
-        table_div = driver.find_element(By.ID, "divDevicesListInfo")
-        rows = table_div.find_elements(By.TAG_NAME, "tr")
-        
-        # List to store the GPS data
-        gps_data = []
-        
-        # Iterate through the rows and extract cell data
-        for row in rows:
-            cells = row.find_elements(By.TAG_NAME, "td")
-            row_data = [cell.text for cell in cells]  # Get the text from each cell
-            if row_data:  # Only add non-empty rows
-                gps_data.append(row_data)
+        print("[DEBUG] Attempting to scrape GPS data")
+        gps_table = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "divDevicesListInfo"))
+        )
+        gps_data = gps_table.text  # You can parse it further
+        update_status("scraping_attempts", status['scraping_attempts'] + 1)
+        update_status("last_action", "Scraping GPS data")
 
-        update_status("last_action", "GPS data extracted successfully")
-        return gps_data
+        print("[DEBUG] Attempting to scrape Alarm data")
+        alarm_table = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "divExceptionMessageDivInfo"))
+        )
+        alarm_data = alarm_table.text  # You can parse it further
+        update_status("last_action", "Scraping Alarm data")
+        
+        # Returning sample structured data
+        return {
+            "gps_data": gps_data,
+            "alarm_data": alarm_data
+        }
+
+    except TimeoutException as e:
+        update_status("errors", f"Timeout while attempting to scrape data: {str(e)}")
+        update_status("last_failure_time", time.strftime("%Y-%m-%d %H:%M:%S"))
+        raise Exception(f"Timeout during scraping process: {str(e)}")
 
     except Exception as e:
-        update_status("errors", str(e))
-        update_status("last_action", "GPS data extraction failed")
-        print(f"Error extracting GPS data: {str(e)}")
-        return {"error": "Failed to extract GPS data"}
+        update_status("errors", f"Scraping error: {str(e)}")
+        update_status("last_failure_time", time.strftime("%Y-%m-%d %H:%M:%S"))
+        print(f"[ERROR] {str(e)}")
+        raise e
 
-# Function to extract alarm data from the table in div 'divExceptionMessageDivInfo'
-def extract_alarm_data(driver):
-    try:
-        # Locate the table inside the div with id 'divExceptionMessageDivInfo'
-        table_div = driver.find_element(By.ID, "divExceptionMessageDivInfo")
-        rows = table_div.find_elements(By.TAG_NAME, "tr")
-        
-        # List to store the alarm data
-        alarm_data = []
-        
-        # Iterate through the rows and extract cell data
-        for row in rows:
-            cells = row.find_elements(By.TAG_NAME, "td")
-            row_data = [cell.text for cell in cells]  # Get the text from each cell
-            if row_data:  # Only add non-empty rows
-                alarm_data.append({
-                    "target_name": row_data[0],
-                    "id_no": row_data[1],
-                    "alarm_type": row_data[2],
-                    "alarm_time": row_data[3],
-                    "position_time": row_data[4],
-                    "device_type": row_data[5],
-                    "operate": row_data[6]
-                })
-
-        update_status("last_action", "Alarm data extracted successfully")
-        return alarm_data
-
-    except Exception as e:
-        update_status("errors", str(e))
-        update_status("last_action", "Alarm data extraction failed")
-        print(f"Error extracting alarm data: {str(e)}")
-        return {"error": "Failed to extract alarm data"}
-
-# Function to check API status (online, logged in, errors)
+# FastAPI route to check the system status
 @app.get("/status")
 def get_status():
-    return api_status
+    return status
 
-# Endpoint to log in and scrape GPS data
+# FastAPI route to trigger scraping and login process
 @app.get("/gps")
-def scrape_gps_data():
-    # Perform login check and re-login if necessary
-    driver = ensure_logged_in()
-    
-    # Reset failure counters if enough time has passed
-    reset_failure_counters()
+def get_gps_data():
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
 
-    # Limit scraping attempts
-    if api_status["scraping_attempts"] >= max_scrape_attempts:
-        update_status("errors", "Max scrape attempts reached")
-        update_status("last_action", "Scraping halted due to failures")
-        print("Max scrape attempts reached. Scraping halted.")
-        return {"error": "Max scrape attempts reached"}
+    driver = webdriver.Chrome(options=options)
+    driver.get(config['url_login'])
 
-    # Track scraping attempt
-    update_status("scraping_attempts", api_status["scraping_attempts"] + 1)
-    
-    # Extract data from the GPS table
-    gps_data = extract_gps_data(driver)
-    
-    # Close the Selenium driver
-    driver.quit()
+    # Login and scrape data
+    try:
+        update_status("login_attempts", status['login_attempts'] + 1)
+        login(driver)
 
-    # If scraping successful, reset attempts
-    if not api_status["errors"]:
-        update_status("scraping_attempts", 0)
+        # After successful login, scrape data
+        data = scrape_data(driver)
 
-    # Return the extracted GPS data
-    return {"gps_data": gps_data}
+        # Mark system as online and logged in
+        update_status("online", True)
+        return data
 
-# Endpoint to log in and scrape alarm data
-@app.get("/alarms")
-def scrape_alarm_data():
-    # Perform login check and re-login if necessary
-    driver = ensure_logged_in()
+    except Exception as e:
+        update_status("errors", str(e))
+        return {"error": str(e)}
 
-    # Reset failure counters if enough time has passed
-    reset_failure_counters()
+    finally:
+        driver.quit()
 
-    # Limit scraping attempts
-    if api_status["scraping_attempts"] >= max_scrape_attempts:
-        update_status("errors", "Max scrape attempts reached")
-        update_status("last_action", "Scraping halted due to failures")
-        print("Max scrape attempts reached. Scraping halted.")
-        return {"error": "Max scrape attempts reached"}
-
-    # Track scraping attempt
-    update_status("scraping_attempts", api_status["scraping_attempts"] + 1)
-    
-    # Extract data from the alarm table
-    alarm_data = extract_alarm_data(driver)
-    
-    # Close the Selenium driver
-    driver.quit()
-
-    # If scraping successful, reset attempts
-    if not api_status["errors"]:
-        update_status("scraping_attempts", 0)
-
-    # Return the extracted alarm data
-    return {"alarm_data": alarm_data}
+# Reset failures after a certain amount of hours
+@app.get("/reset")
+def reset_failures():
+    status['scraping_attempts'] = 0
+    status['login_attempts'] = 0
+    update_status("errors", None)
+    update_status("last_failure_time", None)
+    update_status("last_action", "Reset performed")
+    print("[DEBUG] Resetting failure counters")
+    return {"message": "Failure counters reset"}
