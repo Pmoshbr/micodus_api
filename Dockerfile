@@ -51,7 +51,7 @@ ENV DISPLAY=:99
 WORKDIR /usr/src/app
 
 # Install cryptography directly from a wheel to avoid building from source
-RUN pip3 install --no-cache-dir cryptography==43.0.1 --only-binary cryptography
+RUN pip3 install --no-cache-dir cryptography --only-binary cryptography
 
 # Copy requirements.txt and install Python dependencies
 COPY requirements.txt .
