@@ -1,65 +1,51 @@
-# Use Debian Buster for better compatibility with Chrome dependencies
-FROM debian:buster-slim
+# Use Python 3.10-slim as the base image
+FROM python:3.10-slim
 
-# Install system dependencies, Python 3, pip, and build tools for cryptography
-RUN apt-get update && apt-get install -y \
-    curl \
+# Install system dependencies, Chrome, and ChromeDriver
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     unzip \
-    xvfb \
-    libxi6 \
-    libgconf-2-4 \
+    curl \
+    gnupg \
+    ca-certificates \
+    fonts-liberation \
     libnss3 \
-    libx11-xcb1 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdrm2 \
+    libgbm1 \
+    libgtk-3-0 \
+    libxkbcommon0 \
     libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
     libxrandr2 \
     libasound2 \
-    libpangocairo-1.0-0 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
     libxss1 \
-    libgtk-3-0 \
-    fonts-liberation \
-    libgbm1 \
-    libvulkan1 \
     xdg-utils \
-    python3 \
-    python3-pip \
-    build-essential \
-    libssl-dev \
-    libffi-dev \
-    python3-setuptools \
-    python3-wheel \
-    --no-install-recommends && rm -rf /var/lib/apt/lists/*
+    # Chrome dependencies
+    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+    && apt-get update && apt-get install -y google-chrome-stable \
+    # Download and install ChromeDriver
+    && CHROMEDRIVER_VERSION=$(curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE) \
+    && wget -q "https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip" \
+    && unzip chromedriver_linux64.zip -d /usr/local/bin/ \
+    && rm chromedriver_linux64.zip \
+    # Cleanup
+    && apt-get remove -y wget unzip curl gnupg && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
-# Download and install Google Chrome
-RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
-    apt-get install -y ./google-chrome-stable_current_amd64.deb && \
-    rm google-chrome-stable_current_amd64.deb
-
-# Install ChromeDriver
-RUN CHROMEDRIVER_VERSION=`curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE` && \
-    wget -q "https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip" && \
-    unzip chromedriver_linux64.zip -d /usr/local/bin/ && \
-    rm chromedriver_linux64.zip
-
-# Set display port for headless mode
-ENV DISPLAY=:99
-
-# Create working directory
-WORKDIR /usr/src/app
-
-# Install the latest binary version of cryptography directly to avoid building from source
-RUN pip3 install --no-cache-dir cryptography --only-binary cryptography
-
-# Copy requirements.txt and install Python dependencies
+# Install Python dependencies
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Set the working directory
+WORKDIR /usr/src/app
 
 # Copy the rest of the application code
 COPY . .
+
+# Set display port for headless Chrome
+ENV DISPLAY=:99
 
 # Expose the FastAPI default port
 EXPOSE 8000
