@@ -22,13 +22,15 @@ app = FastAPI()
 gps_data = None
 alarm_data = None
 driver = None
-scrape_attempts = 0
+scrape_attempts_gps = 0
+scrape_attempts_alarm = 0
 login_attempts = 0
 status = {
     "logged_in": False,
     "online": False,
     "errors": None,
-    "scraping_attempts": 0,
+    "scraping_attempts_gps": 0,
+    "scraping attempts_alarm": 0,
     "login_attempts": 0,
     "last_action": "",
     "last_failure_time": None,
@@ -80,6 +82,7 @@ def perform_login():
         status["logged_in"] = True
         status["online"] = True
         status["last_action"] = "Logged in successfully"
+        login_attempts = 0
         status["login_attempts"] = login_attempts
         return driver
     except Exception as e:
@@ -92,44 +95,51 @@ def perform_login():
 
 # Function to scrape GPS data
 def scrape_gps_data(driver):
-    global gps_data, status, scrape_attempts
+    global gps_data, status, scrape_attempts_gps
     try:
-        gps_table = WebDriverWait(driver, 20).until(
+        # Aguardar a presença do div que contém a tabela com as informações do GPS
+        gps_table_div = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.ID, "divDevicesListInfo"))
         )
-        rows = gps_table.find_elements(By.TAG_NAME, "tr")
+
+        # Buscar a tabela dentro do div identificado
+        table = gps_table_div.find_element(By.TAG_NAME, "table")
+        rows = table.find_elements(By.TAG_NAME, "tr")
+        
         gps_data_list = []
         for row in rows[1:]:
             cols = row.find_elements(By.TAG_NAME, "td")
             if len(cols) == 11:
                 gps_data_entry = {
-                    "Target Name": cols[0].text.strip(),
-                    "Type": cols[1].text.strip(),
-                    "License Plate No.": cols[2].text.strip(),
-                    "Speed Limit": cols[3].text.strip(),
-                    "Latitude": cols[4].text.strip(),
-                    "Longitude": cols[5].text.strip(),
-                    "Speed": cols[6].text.strip(),
-                    "Direction": cols[7].text.strip(),
-                    "Total mileage": cols[8].text.strip(),
-                    "Status": cols[9].text.strip(),
-                    "Position time": cols[10].text.strip()
+                    "Target Name": cols[0].get_attribute("innerText").strip(),
+                    "Type": cols[1].get_attribute("innerText").strip(),
+                    "License Plate No.": cols[2].get_attribute("innerText").strip(),
+                    "Speed Limit": cols[3].get_attribute("innerText").strip(),
+                    "Latitude": cols[4].get_attribute("innerText").strip(),
+                    "Longitude": cols[5].get_attribute("innerText").strip(),
+                    "Speed": cols[6].get_attribute("innerText").strip(),
+                    "Direction": cols[7].get_attribute("innerText").strip(),
+                    "Total mileage": cols[8].get_attribute("innerText").strip(),
+                    "Status": cols[9].get_attribute("innerText").strip(),
+                    "Position time": cols[10].get_attribute("innerText").strip()
                 }
                 gps_data_list.append(gps_data_entry)
 
         gps_data = json.dumps(gps_data_list, indent=4)
-        scrape_attempts += 1
-        status["scraping_attempts"] = scrape_attempts
+        scrape_attempts_gps = 0
+        status["scraping_attempts_gps"] = scrape_attempts_gps
         status["last_action"] = "GPS data scraped successfully"
         status["errors"] = None
     except Exception as e:
+        scrape_attempts_gps += 1
+        status["scraping_attempts_gps"] = scrape_attempts_gps
         status["errors"] = f"Failed to scrape GPS data: {str(e)}"
         status["last_failure_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         status["last_action"] = "Scraping GPS data failed"
 
 # Function to scrape Alarm data
 def scrape_alarm_data(driver):
-    global alarm_data, status, scrape_attempts
+    global alarm_data, status, scrape_attempts_alarm
     try:
         alarm_table = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.ID, "divExceptionMessageDivInfo"))
@@ -140,37 +150,41 @@ def scrape_alarm_data(driver):
             cols = row.find_elements(By.TAG_NAME, "td")
             if len(cols) == 7:
                 alarm_data_entry = {
-                    "Target Name": cols[0].text.strip(),
-                    "ID No.": cols[1].text.strip(),
-                    "Alarm Type": cols[2].text.strip(),
-                    "Alarm Time": cols[3].text.strip(),
-                    "Position Time": cols[4].text.strip(),
-                    "Type": cols[5].text.strip(),
-                    "Operate": "Clear"
+                    "Target Name": cols[0].get_attribute("innerText").strip(),
+                    "ID No.": cols[1].get_attribute("innerText").strip(),
+                    "Alarm Type": cols[2].get_attribute("innerText").strip(),
+                    "Alarm Time": cols[3].get_attribute("innerText").strip(),
+                    "Position Time": cols[4].get_attribute("innerText").strip(),
+                    "Type": cols[5].get_attribute("innerText").strip()
                 }
                 alarm_data_list.append(alarm_data_entry)
 
         alarm_data = json.dumps(alarm_data_list, indent=4)
-        scrape_attempts += 1
-        status["scraping_attempts"] = scrape_attempts
+        scrape_attempts_alarm = 0
+        status["scraping_attempts_alarm"] = scrape_attempts_alarm
         status["last_action"] = "Alarm data scraped successfully"
         status["errors"] = None
     except Exception as e:
+        scrape_attempts_alarm += 1
+        status["scraping_attempts_alarm"] = scrape_attempts_alarm
         status["errors"] = f"Failed to scrape Alarm data: {str(e)}"
         status["last_failure_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         status["last_action"] = "Scraping Alarm data failed"
 
 # Function to continuously scrape GPS and Alarm data
 def continuous_scrape():
-    global scrape_attempts
+    global scrape_attempts_gps, scrape_attempts_alarm
     while True:
         if not status["logged_in"]:
             driver = perform_login()
         if status["logged_in"]:
             scrape_gps_data(driver)
-            scrape_alarm_data(driver)
-            if scrape_attempts >= config["max_scrape_attempts"]:
-                status["errors"] = "Max scraping attempts reached"
+            #scrape_alarm_data(driver)
+            if scrape_attempts_gps >= config["max_scrape_attempts"]:
+                status["errors"] = "Max scraping attempts GPS reached"
+                break
+            if scrape_attempts_alarm >= config["max_scrape_attempts"]:
+                status["errors"] = "Max scraping attempts Alarm reached"
                 break
         time.sleep(10)  # Scrape every 10 seconds
 
