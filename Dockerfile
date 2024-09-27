@@ -1,7 +1,7 @@
 # Use Debian Buster for better compatibility with Chrome dependencies
 FROM debian:buster-slim
 
-# Install system dependencies
+# Install system dependencies, Python 3, and pip
 RUN apt-get update && apt-get install -y \
     curl \
     wget \
@@ -25,14 +25,16 @@ RUN apt-get update && apt-get install -y \
     libgbm1 \
     libvulkan1 \
     xdg-utils \
+    python3 \
+    python3-pip \
     --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
-# Download and install Chrome
+# Download and install Google Chrome
 RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
     apt-get install -y ./google-chrome-stable_current_amd64.deb && \
     rm google-chrome-stable_current_amd64.deb
 
-# Install Chromedriver
+# Install ChromeDriver
 RUN CHROMEDRIVER_VERSION=`curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE` && \
     wget -q "https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip" && \
     unzip chromedriver_linux64.zip -d /usr/local/bin/ && \
@@ -44,9 +46,9 @@ ENV DISPLAY=:99
 # Create working directory
 WORKDIR /usr/src/app
 
-# Copy requirements.txt and install dependencies
+# Copy requirements.txt and install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code
 COPY . .
