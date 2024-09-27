@@ -3,6 +3,7 @@ FROM python:3.8
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
+    apt-utils \
     wget \
     curl \
     unzip \
@@ -14,6 +15,10 @@ RUN apt-get update && apt-get install -y \
     libxcomposite1 \
     libxrandr2 \
     libasound2 \
+    libdrm2 \
+    libgbm1 \
+    libu2f-udev \
+    libvulkan1 \
     xdg-utils \
     --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
